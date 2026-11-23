@@ -1,0 +1,101 @@
+</> C++
+
+/*
+#define F_CPU 1000000UL
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <avr/sleep.h>
+#include <util/delay.h>
+
+#define BTN_PIN  PB0   // Active-LOW button to GND (internal pull-up enabled)
+#define PWR_PIN  PB1   // Open-drain output to AirFly Power pad
+#define RST_PIN  PB2   // Open-drain output to AirFly Reset pad
+
+#define DEBOUNCE_MS    25
+#define TAP_MAX_MS     300
+#define DOUBLE_GAP_MS  500
+
+static inline void pin_float(uint8_t pin) {
+    DDRB &= ~(uint8_t)(1 << pin);
+    PORTB &= ~(uint8_t)(1 << pin);
+}
+
+static inline void pin_low(uint8_t pin) {
+    PORTB &= ~(uint8_t)(1 << pin);
+    DDRB |= (uint8_t)(1 << pin);
+}
+
+static inline uint8_t btn_pressed(void) {
+    return (PINB & (1 << BTN_PIN)) == 0;
+}
+
+// Holds `out_pin` LOW for as long as the button stays pressed (debounced).
+static void hold_pin_while_pressed(uint8_t out_pin) {
+    pin_low(out_pin);
+    while (1) {
+        while (btn_pressed()) {
+            _delay_ms(10);
+        }
+        _delay_ms(DEBOUNCE_MS);
+        if (!btn_pressed()) {
+            break;
+        }
+    }
+    pin_float(out_pin);
+}
+
+// Waits up to `timeout_ms` for `target_state` (1 = pressed, 0 = released).
+// Returns 1 if reached within timeout, 0 otherwise.
+static uint8_t wait_for_state(uint8_t target_state, uint16_t timeout_ms) {
+    uint16_t steps = timeout_ms / 10;
+    while (steps--) {
+        if ((btn_pressed() ? 1 : 0) == target_state) {
+            _delay_ms(DEBOUNCE_MS);
+            if ((btn_pressed() ? 1 : 0) == target_state) {
+                return 1;
+            }
+        }
+        _delay_ms(10);
+    }
+    return 0;
+}
+
+ISR(PCINT0_vect) {
+    // Wake from SLEEP_MODE_PWR_DOWN on button edge
+}
+
+int main(void) {
+    DDRB = 0;
+    PORTB = (1 << BTN_PIN); // Pull-up on PB0; PB1 & PB2 start floating
+
+    PCICR = (1 << PCIE0);
+    PCMSK0 = (1 << PCINT0);
+    sei();
+
+    set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+
+    while (1) {
+        sleep_enable();
+        sleep_cpu();
+        sleep_disable();
+
+        _delay_ms(DEBOUNCE_MS);
+        if (!btn_pressed()) {
+            continue;
+        }
+
+        // 1. If held past TAP_MAX_MS on 1st press -> Power / Pairing hold
+        if (!wait_for_state(0, TAP_MAX_MS)) {
+            hold_pin_while_pressed(PWR_PIN);
+            continue;
+        }
+
+        // 2. Quick 1st click released: wait for 2nd click within DOUBLE_GAP_MS
+        if (!wait_for_state(1, DOUBLE_GAP_MS)) {
+            continue; // Single tap only -> ignore
+        }
+
+        // 3. 2nd click down -> Reset hold (bypasses Power)
+        hold_pin_while_pressed(RST_PIN);
+    }
+}
