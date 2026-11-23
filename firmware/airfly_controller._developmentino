@@ -1,6 +1,11 @@
-</> C++
-
 /*
+ * Project: ipod-airfly-t10 (AirFly Gatekeeper)
+ * MCU:     ATtiny10 (SOT-23-6, 1 MHz internal RC, TPI)
+ * Controls:
+ *   - Click & Hold (>300ms): Hold PWR_PIN low while held (Power / Pairing)
+ *   - Click, release, Click & Hold (<500ms gap): Bypass PWR_PIN, hold RST_PIN low while held (Reset)
+ */
+
 #define F_CPU 1000000UL
 #include <avr/io.h>
 #include <avr/interrupt.h>
